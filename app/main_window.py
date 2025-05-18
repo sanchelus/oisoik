@@ -15,10 +15,11 @@ from PySide6.QtCore import Qt, Slot, QDir, QSize
 from PIL import Image, ImageQt, UnidentifiedImageError
 from PySide6.QtWidgets import QColorDialog, QSlider
 from app.drawing_canvas import DrawingCanvas
+from PySide6.QtWidgets import QVBoxLayout
 from . import image_operations
 from app.gradient_utils import create_linear_gradient
 from PySide6.QtWidgets import QDialog, QColorDialog, QComboBox
-
+from PySide6.QtWidgets import QCheckBox
 from .layer_manager import LayerManager, Layer
 from .history_manager import HistoryManager
 
@@ -48,6 +49,7 @@ class ImageEditorWindow(QMainWindow):
         self.image_label = QLabel("Создайте или откройте изображение (Ctrl+O или Ctrl+N)")
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.image_label.setStyleSheet("background-color: white; border: 1px solid #B0BEC5;")
 
         # --- Рисование ---
         self.drawing_canvas = None
@@ -55,9 +57,16 @@ class ImageEditorWindow(QMainWindow):
         self.init_drawing_tools()
 
 
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(self.image_label, alignment=Qt.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setWidget(self.image_label)
+        self.scroll_area.setWidget(container)
+        self.image_label.setStyleSheet("background-color: white; border: 2px solid #546E7A;")
+        self.scroll_area.setStyleSheet("background-color: #B0BEC5;")
 
         self.setCentralWidget(self.scroll_area)
 
@@ -147,14 +156,26 @@ class ImageEditorWindow(QMainWindow):
 
     def start_drawing(self, eraser=False):
         if not self.drawing_canvas:
-            image_size = self.image_label.size()
-            self.drawing_canvas = DrawingCanvas(self.image_label, image_size.width(), image_size.height())
+        # Берем размер изображения из QLabel.pixmap
+            pixmap = self.image_label.pixmap()
+            if pixmap:
+                width, height = pixmap.width(), pixmap.height()
+            else:
+                width, height = self.image_label.width(), self.image_label.height()
+
+        # Создаем DrawingCanvas с размерами как у изображения
+            self.drawing_canvas = DrawingCanvas(self.image_label, width, height)
             self.drawing_canvas.move(0, 0)
+            self.drawing_canvas.setFixedSize(width, height)
+            self.drawing_canvas.setStyleSheet("background: transparent;")
             self.drawing_canvas.show()
+
         self.drawing_canvas.set_eraser_mode(eraser)
         self.drawing_canvas.set_pen_color(self.drawing_canvas.pen_color)
         self.drawing_canvas.set_pen_width(self.brush_size_slider.value())
         self.is_drawing_active = True
+
+    
 
     def select_brush_color(self):
         color = QColorDialog.getColor()
@@ -350,6 +371,8 @@ class ImageEditorWindow(QMainWindow):
         self.layer_list_widget = QListWidget()
         self.layer_list_widget.setAlternatingRowColors(True)
         self.layer_list_widget.currentItemChanged.connect(self.on_layer_selection_changed)
+        self.layer_list_widget.itemChanged.connect(self.on_layer_item_changed)
+
         layer_layout.addWidget(self.layer_list_widget)
 
         # Кнопки управления слоями
@@ -365,6 +388,15 @@ class ImageEditorWindow(QMainWindow):
         layer_panel_widget.setLayout(layer_layout)
         self.layer_dock_widget.setWidget(layer_panel_widget)
         self.addDockWidget(Qt.RightDockWidgetArea, self.layer_dock_widget)
+
+    def on_layer_item_changed(self, item):
+        layer_id = item.data(Qt.UserRole)
+        for layer in self.layer_manager.layers:
+            if layer.id == layer_id:
+                layer.visible = (item.checkState() == Qt.Checked)
+                break
+        self.update_composite_image_display()
+
 
     def activate_shape_mode(self, mode):
         self.start_drawing()
@@ -666,13 +698,33 @@ class ImageEditorWindow(QMainWindow):
     # --- Управление слоями ---
     def refresh_layer_list(self):
         self.layer_list_widget.clear()
-        for i, layer in enumerate(reversed(self.layer_manager.layers)):  # Отображаем в порядке сверху вниз
-            item_text = f"{layer.name} {'(V)' if layer.visible else '(H)'}"  # V - visible, H - hidden
-            list_item = QListWidgetItem(item_text, self.layer_list_widget)
-            list_item.setData(Qt.UserRole, layer.id)  # Сохраняем ID слоя в элементе списка
+        for i, layer in enumerate(reversed(self.layer_manager.layers)):
+            widget = QWidget()
+            layout = QHBoxLayout()
+            layout.setContentsMargins(0, 0, 0, 0)
+
+            checkbox = QCheckBox(layer.name)
+            checkbox.setChecked(layer.visible)
+            checkbox.stateChanged.connect(lambda state, l=layer: self.toggle_layer_visibility(l, state))
+
+            layout.addWidget(checkbox)
+            widget.setLayout(layout)
+
+            item = QListWidgetItem(self.layer_list_widget)
+            item.setSizeHint(widget.sizeHint())
+            self.layer_list_widget.addItem(item)
+            self.layer_list_widget.setItemWidget(item, widget)
+            item.setData(Qt.UserRole, layer.id)
+
             if layer == self.layer_manager.get_active_layer():
-                self.layer_list_widget.setCurrentItem(list_item)
+                self.layer_list_widget.setCurrentItem(item)
+
         self._update_actions_enabled_state()
+
+    def toggle_layer_visibility(self, layer, state):
+        layer.visible = state == Qt.Checked
+        self.update_composite_image_display()
+        self.statusBar().showMessage(f"Слой '{layer.name}' {'показан' if layer.visible else 'скрыт'}.")
 
     @Slot()
     def on_layer_selection_changed(self, current_item, previous_item):
