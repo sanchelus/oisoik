@@ -1,0 +1,89 @@
+QMainWindow {
+    background-color: #ECEFF1;
+}
+
+QMenuBar {
+    background-color: #CFD8DC;
+    border-bottom: 1px solid #B0BEC5;
+}
+QMenuBar::item { spacing: 3px; padding: 4px 10px; background: transparent; border-radius: 4px; }
+QMenuBar::item:selected { background: #B0BEC5; }
+QMenuBar::item:pressed { background: #90A4AE; }
+
+QMenu { background-color: #FAFAFA; border: 1px solid #CFD8DC; padding: 5px; }
+QMenu::item { padding: 5px 25px 5px 20px; border: 1px solid transparent; }
+QMenu::item:selected { background-color: #E0E0E0; color: #212121; }
+QMenu::separator { height: 1px; background: #CFD8DC; margin: 2px 10px 2px 5px; }
+
+QToolBar {
+    background-color: #CFD8DC;
+    border: none;
+    padding: 3px;
+    spacing: 3px; /* Уменьшим немного расстояние */
+    icon-size: 24px; /* Убедимся, что QSS не переопределяет размер иконок, заданный в коде */
+}
+QToolBar QToolButton {
+    background-color: transparent;
+    border: 1px solid transparent;
+    padding: 4px; /* Немного меньше паддинг */
+    border-radius: 3px;
+}
+QToolBar QToolButton:hover { background-color: #B0BEC5; border: 1px solid #90A4AE; }
+QToolBar QToolButton:pressed { background-color: #90A4AE; }
+QToolBar QToolButton:disabled { background-color: #CFD8DC; /* Или другой цвет для неактивных */ }
+
+
+QStatusBar { background-color: #CFD8DC; color: #37474F; font-weight: bold; }
+QScrollArea { border: 1px solid #CFD8DC; }
+
+QMessageBox, QInputDialog { background-color: #FAFAFA; border: 1px solid #CFD8DC; }
+QMessageBox QLabel, QInputDialog QLabel { color: #212121; }
+
+QPushButton {
+    background-color: #B0BEC5; color: #263238; border: 1px solid #78909C;
+    padding: 6px 12px; border-radius: 4px; min-width: 70px;
+}
+QPushButton:hover { background-color: #90A4AE; }
+QPushButton:pressed { background-color: #78909C; }
+QPushButton:disabled { background-color: #CFD8DC; color: #90A4AE; }
+
+QLineEdit, QDoubleSpinBox, QSpinBox {
+    background-color: #FFFFFF; border: 1px solid #B0BEC5;
+    padding: 4px; border-radius: 3px; color: #212121;
+}
+QLineEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus { border: 1px solid #78909C; }
+
+/* Стили для панели слоев */
+QDockWidget {
+    titlebar-close-icon: url(close.png); /* Потребует иконки в resources/icons */
+    titlebar-normal-icon: url(float.png);/* Потребует иконки в resources/icons */
+}
+
+QDockWidget::title {
+    text-align: left; /* Выравнивание заголовка */
+    background: #B0BEC5; /* Фон заголовка док-виджета */
+    padding: 5px;
+    border: 1px solid #90A4AE;
+    border-bottom-color: #CFD8DC; /* Чтобы совпадало с тулбаром/менюбаром */
+}
+
+QListWidget {
+    background-color: #FFFFFF;
+    border: 1px solid #CFD8DC;
+    alternate-background-color: #F5F5F5; /* Для чередующихся строк */
+}
+
+QListWidget::item {
+    padding: 5px;
+    border-bottom: 1px dotted #E0E0E0; /* Разделитель между элементами */
+}
+
+QListWidget::item:selected {
+    background-color: #78909C; /* Цвет выделенного элемента */
+    color: white;
+    border: 1px solid #546E7A;
+}
+QListWidget::item:hover {
+    background-color: #CFD8DC;
+    color: #263238;
+}

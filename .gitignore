@@ -1,0 +1,26 @@
+
+---
+
+### 📄 `.gitignore` (исключаем мусор)
+
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.venv/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
