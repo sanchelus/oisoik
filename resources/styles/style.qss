@@ -87,3 +87,10 @@ QListWidget::item:hover {
     background-color: #CFD8DC;
     color: #263238;
 }
+
+/* Стиль для кнопок на панели инструментов, когда они "отмечены" (checked) */
+QToolBar QToolButton:checked {
+    background-color: #78909C; /* Более темный фон, как у pressed */
+    border: 1px solid #546E7A; /* Более темная граница */
+    /* Можно добавить другие свойства, например, изменение иконки или цвета текста */
+}

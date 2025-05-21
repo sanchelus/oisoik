@@ -2,46 +2,58 @@
 # Определяет класс ImageEditorWindow, который является главным окном приложения.
 
 import sys
-import os # Для работы с путями к иконкам
+import os 
 from PySide6.QtWidgets import (
     QMainWindow, QLabel, QFileDialog, QScrollArea,
     QMessageBox, QSizePolicy, QInputDialog, QToolBar,
     QDockWidget, QListWidget, QListWidgetItem, QVBoxLayout,
     QWidget, QPushButton, QHBoxLayout, QSpacerItem, QLayout
 )
-from PySide6.QtGui import QPixmap, QImage, QAction, QGuiApplication, QIcon, QKeySequence, QColor
-from PySide6.QtWidgets import QStyle # Используется QStyle.StandardPixmap
-from PySide6.QtCore import Qt, Slot, QDir, QSize
-from PIL import Image, ImageQt, UnidentifiedImageError # UnidentifiedImageError добавлен для явной обработки
-from PySide6.QtWidgets import QColorDialog, QSlider # QComboBox, QDialog используются ниже
 
-# Импорты из вашего проекта
+from PySide6.QtGui import QPixmap, QImage, QAction, QGuiApplication, QIcon, QKeySequence, QColor, QCloseEvent
+from PySide6.QtWidgets import QStyle 
+from PySide6.QtCore import Qt, Slot, QDir, QSize
+from PIL import Image, ImageQt, UnidentifiedImageError 
+from PySide6.QtWidgets import QColorDialog, QSlider 
+
+
 from .drawing_canvas import DrawingCanvas # Используем относительный импорт для модулей внутри пакета
-from . import image_operations # Аналогично
-from .gradient_utils import create_linear_gradient # Аналогично
-from .layer_manager import LayerManager, Layer # Аналогично
-from .history_manager import HistoryManager # Аналогично
+from . import image_operations 
+from .gradient_utils import create_linear_gradient 
+from .layer_manager import LayerManager, Layer 
+from .history_manager import HistoryManager 
 
 class ImageEditorWindow(QMainWindow):
-    def __init__(self, resources_path): # Принимаем путь к ресурсам
+    """
+    Главное окно приложения для редактирования изображений.
+
+    Предоставляет пользовательский интерфейс для открытия, сохранения,
+    редактирования изображений с использованием слоев, фильтров и инструментов рисования.
+    """
+    def __init__(self, resources_path): 
+        """
+        Инициализирует главное окно редактора.
+
+        Args:
+            resources_path (str): Путь к папке с ресурсами приложения (иконки, стили).
+        """
         super().__init__()
         self.resources_path = resources_path
         self.icons_path = os.path.join(self.resources_path, "icons")
 
-        self.setWindowTitle("Фоторедактор Pro v2")
+        self.setWindowTitle("ОИСОИК")
         screen = QGuiApplication.primaryScreen()
-        if screen: # Добавлена проверка, что screen не None
+        if screen: 
             screen_geometry = screen.availableGeometry()
             self.setGeometry(screen_geometry.width() // 8, screen_geometry.height() // 8,
                              screen_geometry.width() * 3 // 4, screen_geometry.height() * 3 // 4)
-        else: # Фолбэк размер, если экран не определен
+        else: 
             self.setGeometry(100, 100, 1024, 768)
 
 
         self.layer_manager = LayerManager()
         self.history_manager = HistoryManager()
 
-        # Связываем сигнал изменения активного слоя с обновлением истории
         self.layer_manager.active_layer_changed.connect(self.on_active_layer_changed_for_history_and_ui)
 
         self.current_pixmap_for_zoom = None
@@ -50,9 +62,7 @@ class ImageEditorWindow(QMainWindow):
         self.image_label = QLabel("Создайте или откройте изображение (Ctrl+O или Ctrl+N)")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        # --- ИЗМЕНЕНИЕ: Добавлена граница для image_label ---
         self.image_label.setStyleSheet("border: 1px solid gray;") 
-        # --- КОНЕЦ ИЗМЕНЕНИЯ ---
         self.image_label.adjustSize() 
         self.image_label.setAutoFillBackground(False) 
 
@@ -89,7 +99,17 @@ class ImageEditorWindow(QMainWindow):
         self.statusBar().showMessage("Готово к работе!")
         self._update_actions_enabled_state()
 
-    def _get_icon(self, name):
+    def _get_icon(self, name: str) -> QIcon:
+        """
+        Загружает иконку по имени из папки ресурсов.
+        Если кастомная иконка не найдена, пытается загрузить стандартную иконку Qt.
+
+        Args:
+            name (str): Имя файла иконки (например, "open.png").
+
+        Returns:
+            QIcon: Загруженная иконка или пустая иконка, если ничего не найдено.
+        """
         icon_path = os.path.join(self.icons_path, name)
         if os.path.exists(icon_path):
             return QIcon(icon_path)
@@ -107,6 +127,7 @@ class ImageEditorWindow(QMainWindow):
         return QIcon() 
 
     def init_drawing_tools(self):
+        """Инициализирует QAction и виджеты для инструментов рисования."""
         self.brush_action = QAction(self._get_icon("brush.png"), "Кисть", self)
         self.brush_action.setCheckable(True)
         self.brush_action.triggered.connect(self.activate_brush_mode)
@@ -127,7 +148,7 @@ class ImageEditorWindow(QMainWindow):
         self.line_action.setCheckable(True)
         self.line_action.triggered.connect(lambda: self.activate_shape_mode("line"))
 
-        self.color_action = QAction(self._get_icon("color_picker.png"), "Цвет кисти", self) 
+        self.color_action = QAction(self._get_icon("color_picker.png"), "Цвет кисти/фигуры", self) 
         self.color_action.triggered.connect(self.select_brush_color)
 
         self.brush_size_slider = QSlider(Qt.Orientation.Horizontal)
@@ -137,16 +158,17 @@ class ImageEditorWindow(QMainWindow):
         self.brush_size_slider.setFixedWidth(100)
         self.brush_size_slider.valueChanged.connect(self.change_brush_size)
 
-        self.apply_drawing_action = QAction(self._get_icon("apply.png"), "Применить рисунок", self) 
+        self.apply_drawing_action = QAction(self._get_icon("apply.png"), "Применить рисунок к слою", self) 
         self.apply_drawing_action.triggered.connect(self.apply_drawing_to_layer)
         
-        self.clear_drawing_action = QAction(self._get_icon("clear.png"), "Очистить холст рисования", self) 
+        self.clear_drawing_action = QAction(self._get_icon("clear.png"), "Очистить текущий холст рисования", self) 
         self.clear_drawing_action.triggered.connect(self.clear_drawing_canvas_content) 
 
-        self.gradient_action = QAction(self._get_icon("gradient.png"), "Градиент", self) 
+        self.gradient_action = QAction(self._get_icon("gradient.png"), "Применить градиент к слою", self) 
         self.gradient_action.triggered.connect(self.apply_gradient_to_active_layer)
 
     def _reset_drawing_tool_actions_check_state(self):
+        """Снимает выделение (checked state) со всех кнопок инструментов рисования на тулбаре."""
         self.brush_action.setChecked(False)
         self.eraser_action.setChecked(False)
         self.rect_action.setChecked(False)
@@ -154,85 +176,108 @@ class ImageEditorWindow(QMainWindow):
         self.line_action.setChecked(False)
 
     def _create_actions(self):
+        """Создает все QAction для меню и панелей инструментов."""
         self.new_action = QAction(self._get_icon("new_file.png"), "&Новый...", self)
+        self.new_action.setStatusTip("Создать новое изображение")
         self.new_action.triggered.connect(self.create_new_image_dialog)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
 
         self.open_action = QAction(self._get_icon("open.png"), "&Открыть...", self)
+        self.open_action.setStatusTip("Открыть существующее изображение")
         self.open_action.triggered.connect(self.open_image_dialog)
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
 
         self.save_as_action = QAction(self._get_icon("save.png"), "&Сохранить как...", self)
+        self.save_as_action.setStatusTip("Сохранить текущее изображение в новый файл")
         self.save_as_action.triggered.connect(self.save_image_dialog)
         self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
 
         self.close_all_action = QAction(self._get_icon("close_all.png"), "&Закрыть все", self) 
+        self.close_all_action.setStatusTip("Закрыть все открытые изображения и холсты")
         self.close_all_action.triggered.connect(self.close_all_documents)
 
         self.exit_action = QAction(self._get_icon("exit.png"), "&Выход", self) 
+        self.exit_action.setStatusTip("Выйти из приложения")
         self.exit_action.triggered.connect(self.close) 
         self.exit_action.setShortcut(QKeySequence.StandardKey.Quit)
 
         self.undo_action = QAction(self._get_icon("undo.png"), "&Отменить", self)
+        self.undo_action.setStatusTip("Отменить последнее действие")
         self.undo_action.triggered.connect(self.trigger_undo)
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
 
         self.redo_action = QAction(self._get_icon("redo.png"), "&Повторить", self)
+        self.redo_action.setStatusTip("Повторить отмененное действие")
         self.redo_action.triggered.connect(self.trigger_redo)
         self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
 
         self.grayscale_action = QAction(self._get_icon("filter_grayscale.png"), "&Оттенки серого", self)
+        self.grayscale_action.setStatusTip("Преобразовать активный слой в оттенки серого")
         self.grayscale_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.apply_grayscale, filter_name="Оттенки серого"))
 
         self.sepia_action = QAction(self._get_icon("filter_sepia.png"), "&Сепия", self)
+        self.sepia_action.setStatusTip("Применить эффект сепии к активному слою")
         self.sepia_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.apply_sepia, filter_name="Сепия"))
 
         self.brightness_action = QAction(self._get_icon("filter_brightness.png"), "&Яркость...", self)
+        self.brightness_action.setStatusTip("Изменить яркость активного слоя")
         self.brightness_action.triggered.connect(self.adjust_brightness_on_active_layer)
 
         self.contrast_action = QAction(self._get_icon("filter_contrast.png"), "&Контрастность...", self)
+        self.contrast_action.setStatusTip("Изменить контрастность активного слоя")
         self.contrast_action.triggered.connect(self.adjust_contrast_on_active_layer)
 
         self.rotate_action = QAction(self._get_icon("rotate.png"), "Повернуть на 90° &вправо", self)
+        self.rotate_action.setStatusTip("Повернуть активный слой на 90 градусов по часовой стрелке")
         self.rotate_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.rotate_90_clockwise, filter_name="Поворот на 90°"))
 
         self.blur_action = QAction(self._get_icon("filter_blur.png"), "&Размытие (Гаусс)...", self)
+        self.blur_action.setStatusTip("Применить Гауссово размытие к активному слою")
         self.blur_action.triggered.connect(self.apply_blur_to_active_layer)
 
         self.sharpen_action = QAction(self._get_icon("filter_sharpen.png"), "&Резкость", self) 
+        self.sharpen_action.setStatusTip("Увеличить резкость активного слоя")
         self.sharpen_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.apply_sharpen, filter_name="Резкость"))
 
         self.emboss_action = QAction(self._get_icon("filter_emboss.png"), "&Тиснение", self)
+        self.emboss_action.setStatusTip("Применить эффект тиснения к активному слою")
         self.emboss_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.apply_emboss, filter_name="Тиснение"))
 
         self.edge_detect_action = QAction(self._get_icon("filter_edges.png"), "Обнаружение &краев", self)
+        self.edge_detect_action.setStatusTip("Применить фильтр обнаружения краев к активному слою")
         self.edge_detect_action.triggered.connect(
             lambda: self._apply_filter_to_active_layer(image_operations.apply_edge_detect, filter_name="Обнаружение краев"))
 
         self.reset_layer_action = QAction(self._get_icon("reset.png"), "&Сбросить слой", self)
+        self.reset_layer_action.setStatusTip("Сбросить изменения активного слоя к его исходному состоянию (если доступно)")
         self.reset_layer_action.triggered.connect(self.reset_active_layer_to_original)
 
         self.add_layer_action = QAction(self._get_icon("add_layer.png"), "&Добавить слой", self)
+        self.add_layer_action.setStatusTip("Добавить новый пустой слой")
         self.add_layer_action.triggered.connect(self.add_new_layer_action)
 
         self.zoom_in_action = QAction(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp), "Увеличить (+)", self) 
+        self.zoom_in_action.setStatusTip("Увеличить масштаб отображения")
         self.zoom_in_action.triggered.connect(lambda: self.zoom_image_on_display(1.25))
         self.zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
 
         self.zoom_out_action = QAction(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown), "Уменьшить (-)", self) 
+        self.zoom_out_action.setStatusTip("Уменьшить масштаб отображения")
         self.zoom_out_action.triggered.connect(lambda: self.zoom_image_on_display(0.8))
         self.zoom_out_action.setShortcut(QKeySequence.StandardKey.ZoomOut)
 
         self.actual_size_action = QAction("Реальный &размер (100%)", self)
+        self.actual_size_action.setStatusTip("Показать изображение в реальном размере (100%)")
         self.actual_size_action.triggered.connect(self.set_actual_image_size)
         self.actual_size_action.setShortcut(QKeySequence("Ctrl+0")) 
 
     def _create_menus(self):
+        """Создает и наполняет главное меню приложения."""
         file_menu = self.menuBar().addMenu("&Файл")
         file_menu.addAction(self.new_action)
         file_menu.addAction(self.open_action)
@@ -269,6 +314,7 @@ class ImageEditorWindow(QMainWindow):
         view_menu.addAction(self.actual_size_action)
 
     def _create_toolbar(self):
+        """Создает и наполняет главную панель инструментов."""
         toolbar = QToolBar("Основная панель инструментов")
         toolbar.setMovable(True) 
         toolbar.setIconSize(QSize(24, 24))
@@ -306,6 +352,7 @@ class ImageEditorWindow(QMainWindow):
         toolbar.addAction(self.rotate_action)
 
     def _create_layer_panel(self): 
+        """Создает панель (DockWidget) для управления слоями."""
         self.layer_dock_widget = QDockWidget("Слои", self)
         self.layer_dock_widget.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
 
@@ -327,43 +374,43 @@ class ImageEditorWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.layer_dock_widget)
 
     def activate_brush_mode(self):
+        """Активирует инструмент 'Кисть'."""
         self.start_drawing_session(mode='brush')
-        self.eraser_action.setChecked(False)
-        self.rect_action.setChecked(False)
-        self.ellipse_action.setChecked(False)
-        self.line_action.setChecked(False)
+        self._reset_drawing_tool_actions_check_state() 
         self.brush_action.setChecked(True) 
 
     def activate_eraser_mode(self):
+        """Активирует инструмент 'Ластик'."""
         self.start_drawing_session(mode='eraser')
-        self.brush_action.setChecked(False)
-        self.rect_action.setChecked(False)
-        self.ellipse_action.setChecked(False)
-        self.line_action.setChecked(False)
-        self.eraser_action.setChecked(True) 
+        self._reset_drawing_tool_actions_check_state()
+        self.eraser_action.setChecked(True)
 
-    def activate_shape_mode(self, shape_mode):
+    def activate_shape_mode(self, shape_mode: str):
+        """
+        Активирует инструмент для рисования фигур.
+
+        Args:
+            shape_mode (str): Тип фигуры ('rect', 'ellipse', 'line').
+        """
         self.start_drawing_session(mode=shape_mode)
-        self.brush_action.setChecked(False)
-        self.eraser_action.setChecked(False)
+        self._reset_drawing_tool_actions_check_state()
+        
         actions_map = {
             "rect": self.rect_action,
             "ellipse": self.ellipse_action,
             "line": self.line_action
         }
-        # Сначала снимаем выделение со всех кнопок фигур
-        for action_widget in actions_map.values():
-            action_widget.setChecked(False)
-        
-        # Затем устанавливаем выделение для активной кнопки фигуры
         if shape_mode in actions_map: 
             actions_map[shape_mode].setChecked(True)
 
-    def start_drawing_session(self, mode='brush'):
+    def start_drawing_session(self, mode: str = 'brush'):
+        """
+        Инициализирует или настраивает сеанс рисования на DrawingCanvas.
+        """
         active_layer = self.layer_manager.get_active_layer()
         if not active_layer or not active_layer.image:
             QMessageBox.warning(self, "Нет активного слоя", "Для рисования нужен активный слой с изображением.")
-            self._reset_drawing_tool_actions_check_state()
+            self._reset_drawing_tool_actions_check_state() 
             return
 
         target_canvas_width = 0
@@ -382,60 +429,67 @@ class ImageEditorWindow(QMainWindow):
             return
             
         recreate_canvas = False
-        if not self.drawing_canvas:
+        if not self.drawing_canvas: 
             recreate_canvas = True
         elif self.drawing_canvas.size() != QSize(target_canvas_width, target_canvas_height):
             recreate_canvas = True
         
         if recreate_canvas:
-            if self.drawing_canvas:
+            if self.drawing_canvas: 
                 self.drawing_canvas.hide()
                 self.drawing_canvas.deleteLater()
-                self.drawing_canvas = None
+                self.drawing_canvas = None 
             
             self.drawing_canvas = DrawingCanvas(self.image_label, target_canvas_width, target_canvas_height)
-            # Устанавливаем начальные значения кисти при создании нового холста
-            initial_pen_color = self.drawing_canvas.pen_color # Цвет по умолчанию из DrawingCanvas
+            initial_pen_color = self.drawing_canvas.pen_color 
             self.drawing_canvas.set_pen_color(initial_pen_color if initial_pen_color.isValid() else QColor(Qt.GlobalColor.black))
             self.drawing_canvas.set_pen_width(self.brush_size_slider.value())
             self.drawing_canvas.show() 
-            self.drawing_canvas.move(0, 0)
+            self.drawing_canvas.move(0, 0) 
         
-        # Убедимся, что холст видим, если он уже существует и не пересоздавался
         if self.drawing_canvas and not self.drawing_canvas.isVisible():
             self.drawing_canvas.show()
-            self.drawing_canvas.move(0,0) # На всякий случай, если был скрыт и перемещен
+            self.drawing_canvas.move(0,0)
 
-        if self.drawing_canvas: # Дополнительная проверка перед использованием
+        if self.drawing_canvas: 
             self.drawing_canvas.set_mode(mode) 
             self.is_drawing_active = True 
             self.statusBar().showMessage(f"Режим: {mode}. Цвет: {self.drawing_canvas.pen_color.name()}, Размер: {self.drawing_canvas.pen_width}")
-        else: # Если по какой-то причине холст не создался
+        else: 
             self.is_drawing_active = False
-            self._reset_drawing_tool_actions_check_state()
+            self._reset_drawing_tool_actions_check_state() 
             QMessageBox.critical(self, "Ошибка", "Не удалось инициализировать холст для рисования.")
 
-        self._update_actions_enabled_state()
+        self._update_actions_enabled_state() 
 
 
     def select_brush_color(self):
+        """Открывает диалог выбора цвета для кисти/фигуры."""
         initial_color = self.drawing_canvas.pen_color if self.drawing_canvas else QColor(Qt.GlobalColor.black)
         
         color = QColorDialog.getColor(initial_color, self, "Выберите цвет кисти/фигуры")
         if color.isValid():
-            if self.drawing_canvas:
+            if self.drawing_canvas and self.is_drawing_active: 
                 self.drawing_canvas.set_pen_color(color)
                 self.statusBar().showMessage(f"Новый цвет кисти/фигуры: {color.name()}")
+            elif self.drawing_canvas: 
+                 self.drawing_canvas.set_pen_color(color) 
+                 self.statusBar().showMessage(f"Цвет {color.name()} будет использован для следующего рисунка.")
             else: 
-                QMessageBox.information(self, "Информация", "Сначала активируйте инструмент рисования или фигуру, чтобы применить цвет.")
+                QMessageBox.information(self, "Информация", "Сначала активируйте инструмент рисования или фигуру.")
 
 
-    def change_brush_size(self, value):
-        if self.drawing_canvas:
+    def change_brush_size(self, value: int):
+        """
+        Изменяет размер кисти/пера для DrawingCanvas.
+        """
+        if self.drawing_canvas: 
             self.drawing_canvas.set_pen_width(value)
-            self.statusBar().showMessage(f"Новый размер кисти/фигуры: {value}")
+            if self.is_drawing_active: 
+                self.statusBar().showMessage(f"Новый размер кисти/фигуры: {value}")
 
     def clear_drawing_canvas_content(self): 
+        """Очищает содержимое текущего DrawingCanvas (непримененный рисунок)."""
         if self.drawing_canvas and self.is_drawing_active: 
             self.drawing_canvas.clear_canvas()
             self.statusBar().showMessage("Холст для рисования очищен.")
@@ -444,49 +498,48 @@ class ImageEditorWindow(QMainWindow):
 
 
     def apply_drawing_to_layer(self):
+        """Применяет текущий рисунок с DrawingCanvas к активному слою."""
         active_layer = self.layer_manager.get_active_layer()
         if not self.drawing_canvas or not self.is_drawing_active or not active_layer or not active_layer.image:
             QMessageBox.warning(self, "Ошибка", "Нет активного рисунка или слоя для применения.")
             return
 
         try:
-            # Получаем изображение с холста ДО его возможного уничтожения
-            drawing_qimage = self.drawing_canvas.get_image()
+            drawing_qimage = self.drawing_canvas.get_image() 
             pil_drawing = ImageQt.fromqimage(drawing_qimage.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied))
             
-            # --- ИЗМЕНЕНИЕ: Уничтожаем холст и сбрасываем состояние после получения изображения ---
             if self.drawing_canvas:
                 self.drawing_canvas.hide()
-                self.drawing_canvas.deleteLater()
-                self.drawing_canvas = None
-            self.is_drawing_active = False
-            self._reset_drawing_tool_actions_check_state()
-            # --- КОНЕЦ ИЗМЕНЕНИЯ ---
+                self.drawing_canvas.deleteLater() 
+                self.drawing_canvas = None 
+            self.is_drawing_active = False 
+            self._reset_drawing_tool_actions_check_state() 
 
             self.history_manager.add_state(active_layer.id, active_layer.image.copy())
 
-            base_pil = active_layer.image.convert("RGBA")
+            base_pil = active_layer.image.convert("RGBA") 
             
             if base_pil.size != pil_drawing.size:
                  pil_drawing = pil_drawing.resize(base_pil.size, Image.Resampling.LANCZOS)
 
-            base_pil.alpha_composite(pil_drawing)
-            active_layer.image = base_pil
+            base_pil.alpha_composite(pil_drawing) 
+            active_layer.image = base_pil 
 
             self.update_composite_image_display() 
             self.statusBar().showMessage(f"Рисунок применен к слою '{active_layer.name}'")
-            self._update_actions_enabled_state() # Обновляем состояние кнопок после сброса is_drawing_active
+            self._update_actions_enabled_state() 
 
         except Exception as e:
             QMessageBox.critical(self, "Ошибка применения рисунка", f"Не удалось применить рисунок: {e}")
             if active_layer and self.history_manager.can_undo(active_layer.id):
                  undone_image_state_after_failed_apply = self.history_manager.undo(active_layer.id)
-                 if undone_image_state_after_failed_apply:
+                 if undone_image_state_after_failed_apply: 
                      active_layer.image = undone_image_state_after_failed_apply
-            self._update_actions_enabled_state() # Убедимся, что кнопки обновлены и в случае ошибки
+            self._update_actions_enabled_state() 
 
 
     def apply_gradient_to_active_layer(self):
+        """Применяет линейный градиент к активному слою."""
         active_layer = self.layer_manager.get_active_layer()
         if not active_layer or not active_layer.image:
             QMessageBox.warning(self, "Нет слоя", "Нет активного слоя для применения градиента.")
@@ -538,9 +591,9 @@ class ImageEditorWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка градиента", f"Не удалось применить градиент: {e}")
 
-
     @Slot()
     def create_new_image_dialog(self):
+        """Открывает диалог для создания нового изображения."""
         if self.drawing_canvas:
             self.drawing_canvas.hide()
             self.drawing_canvas.deleteLater()
@@ -565,17 +618,17 @@ class ImageEditorWindow(QMainWindow):
 
         self.layer_manager.add_layer(image=new_pil_image, name=layer_name, is_original=True) 
         
-        self.refresh_layer_list()
+        self.refresh_layer_list() 
         if self.layer_manager.layers:
              self.layer_manager.set_active_layer_by_id(self.layer_manager.layers[-1].id)
 
-        self.update_composite_image_display()
+        self.update_composite_image_display() 
         self.statusBar().showMessage(f"Создано новое изображение {width}x{height}")
-        self._update_actions_enabled_state()
         self.current_zoom_factor = 1.0 
 
     @Slot()
     def open_image_dialog(self):
+        """Открывает диалог для выбора и загрузки изображения."""
         if self.drawing_canvas:
             self.drawing_canvas.hide()
             self.drawing_canvas.deleteLater()
@@ -583,12 +636,12 @@ class ImageEditorWindow(QMainWindow):
         self.is_drawing_active = False
         self._reset_drawing_tool_actions_check_state()
 
-        start_path = QDir.homePath()
+        start_path = QDir.homePath() 
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Открыть изображение", start_path,
             "Файлы изображений (*.png *.jpg *.jpeg *.bmp *.gif);;Все файлы (*)"
         )
-        if file_path:
+        if file_path: 
             try:
                 if not self.layer_manager.has_layers() or not self.layer_manager.get_active_layer():
                     self.layer_manager.clear_all_layers()
@@ -596,11 +649,11 @@ class ImageEditorWindow(QMainWindow):
                 
                 pil_img = Image.open(file_path).convert("RGBA") 
                 
-                layer_name = os.path.basename(file_path)
+                layer_name = os.path.basename(file_path) 
                 self.layer_manager.add_layer(image=pil_img, name=layer_name, is_original=True)
                 
                 self.refresh_layer_list()
-                if self.layer_manager.layers:
+                if self.layer_manager.layers: 
                     self.layer_manager.set_active_layer_by_id(self.layer_manager.layers[-1].id)
 
                 self.update_composite_image_display()
@@ -610,13 +663,14 @@ class ImageEditorWindow(QMainWindow):
                 QMessageBox.critical(self, "Ошибка", f"Файл не найден: {file_path}")
             except UnidentifiedImageError: 
                  QMessageBox.critical(self, "Ошибка", f"Не удалось распознать формат файла: {file_path}")
-            except Exception as e:
+            except Exception as e: 
                 QMessageBox.critical(self, "Ошибка открытия", f"Ошибка при открытии файла '{file_path}': {e}")
-            finally:
-                self._update_actions_enabled_state()
+            finally: 
+                self._update_actions_enabled_state() 
 
     @Slot()
     def save_image_dialog(self):
+        """Открывает диалог для сохранения текущей композиции слоев."""
         if not self.layer_manager.has_layers():
             QMessageBox.warning(self, "Внимание", "Нет изображения для сохранения.")
             return
@@ -632,13 +686,16 @@ class ImageEditorWindow(QMainWindow):
         )
         if file_path:
             try:
-                image_operations.save_image(composite_image, file_path)
+                image_operations.save_image(composite_image, file_path) 
                 self.statusBar().showMessage(f"Композиция сохранена в: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка сохранения", f"Не удалось сохранить: {e}")
 
     @Slot()
-    def close_all_documents(self, confirm=True): 
+    def close_all_documents(self, confirm: bool = True) -> bool: 
+        """
+        Закрывает все открытые изображения/холсты, сбрасывая состояние приложения.
+        """
         if confirm and self.layer_manager.has_layers(): 
             reply = QMessageBox.question(self, 'Закрыть все',
                                          "Вы уверены, что хотите закрыть все открытые изображения/холсты?\n"
@@ -648,7 +705,7 @@ class ImageEditorWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.No:
                 return False 
 
-        self.layer_manager.clear_all_layers()
+        self.layer_manager.clear_all_layers() 
         self.history_manager.clear_all_history()
 
         if self.drawing_canvas:
@@ -671,87 +728,93 @@ class ImageEditorWindow(QMainWindow):
         return True 
 
     def update_composite_image_display(self):
+        """
+        Обновляет отображаемое изображение в QLabel (self.image_label).
+        """
         composite_image_pil = self.layer_manager.get_composite_image()
 
         if composite_image_pil:
             try:
                 q_image = ImageQt.ImageQt(composite_image_pil.convert("RGBA")) 
-                pixmap = QPixmap.fromImage(q_image)
+                self.current_pixmap_for_zoom = QPixmap.fromImage(q_image) 
                 
-                self.current_pixmap_for_zoom = pixmap 
                 if abs(self.current_zoom_factor - 1.0) > 1e-5: 
-                    scaled_width = int(pixmap.width() * self.current_zoom_factor)
-                    scaled_height = int(pixmap.height() * self.current_zoom_factor)
+                    scaled_width = int(self.current_pixmap_for_zoom.width() * self.current_zoom_factor)
+                    scaled_height = int(self.current_pixmap_for_zoom.height() * self.current_zoom_factor)
                     if scaled_width > 0 and scaled_height > 0:
-                         scaled_pixmap = pixmap.scaled(scaled_width, scaled_height,
-                                                       Qt.AspectRatioMode.KeepAspectRatio,
-                                                       Qt.TransformationMode.SmoothTransformation)
+                         scaled_pixmap = self.current_pixmap_for_zoom.scaled(
+                             scaled_width, scaled_height,
+                             Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
                          self.image_label.setPixmap(scaled_pixmap)
                     else: 
-                         self.image_label.setPixmap(pixmap)
-                else:
-                    self.image_label.setPixmap(pixmap)
+                         self.image_label.setPixmap(self.current_pixmap_for_zoom)
+                else: 
+                    self.image_label.setPixmap(self.current_pixmap_for_zoom)
 
                 self.image_label.adjustSize() 
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка отображения", f"Не удалось отобразить композицию: {e}")
                 self.image_label.setText("Ошибка отображения композиции")
                 self.current_pixmap_for_zoom = None
-        else:
+        else: 
             self.image_label.clear()
             self.image_label.setText("Создайте или откройте изображение")
             self.current_pixmap_for_zoom = None
             self.image_label.adjustSize()
 
-        self._update_actions_enabled_state()
+        self._update_actions_enabled_state() 
 
 
     def _apply_filter_to_active_layer(self, filter_function, *args, filter_name="фильтр"):
+        """
+        Применяет указанную функцию-фильтр к активному слою.
+        """
         active_layer = self.layer_manager.get_active_layer()
-        if active_layer and active_layer.image:
-            if self.is_drawing_active and self.drawing_canvas and not self.drawing_canvas.image.isNull(): #isNull проверяет, пустое ли изображение QImage
-                reply = QMessageBox.question(self, "Незавершенное рисование",
-                                             "На холсте есть непримененный рисунок. Применить его перед фильтром?",
-                                             QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-                                             QMessageBox.StandardButton.Cancel)
-                if reply == QMessageBox.StandardButton.Apply:
-                    self.apply_drawing_to_layer() 
-                    # apply_drawing_to_layer теперь сбрасывает is_drawing_active и уничтожает холст,
-                    # так что для применения фильтра после этого не нужно дополнительных действий с холстом.
-                elif reply == QMessageBox.StandardButton.Cancel:
-                    return 
-                elif reply == QMessageBox.StandardButton.Discard: 
-                    if self.drawing_canvas: # Убедимся, что холст еще существует
-                        self.drawing_canvas.clear_canvas() 
-                        # Уничтожаем холст и сбрасываем состояние, как в apply_drawing_to_layer
-                        self.drawing_canvas.hide()
-                        self.drawing_canvas.deleteLater()
-                        self.drawing_canvas = None
-                    self.is_drawing_active = False 
-                    self._reset_drawing_tool_actions_check_state() 
+        if not (active_layer and active_layer.image):
+            QMessageBox.information(self, "Информация", "Нет активного слоя с изображением для применения фильтра.")
+            return
+
+        if self.is_drawing_active and self.drawing_canvas and not self.drawing_canvas.image.isNull():
+            reply = QMessageBox.question(self, "Незавершенное рисование",
+                                         "На холсте есть непримененный рисунок. Применить его перед фильтром?",
+                                         QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                                         QMessageBox.StandardButton.Cancel)
+            if reply == QMessageBox.StandardButton.Apply:
+                self.apply_drawing_to_layer() 
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return 
+            elif reply == QMessageBox.StandardButton.Discard: 
+                if self.drawing_canvas: 
+                    self.drawing_canvas.clear_canvas() 
+                    self.drawing_canvas.hide()
+                    self.drawing_canvas.deleteLater()
+                    self.drawing_canvas = None
+                self.is_drawing_active = False 
+                self._reset_drawing_tool_actions_check_state() 
+        
+        try:
+            self.history_manager.add_state(active_layer.id, active_layer.image.copy()) 
+            processed_image = filter_function(active_layer.image.copy(), *args) 
             
-            try:
-                self.history_manager.add_state(active_layer.id, active_layer.image.copy())
-                processed_image = filter_function(active_layer.image.copy(), *args)
-                
-                if processed_image:
-                    active_layer.image = processed_image 
-                    self.update_composite_image_display() 
-                    self.statusBar().showMessage(f"Применен '{filter_name}' к слою '{active_layer.name}'")
-                else:
-                    QMessageBox.warning(self, "Ошибка фильтра", f"Фильтр '{filter_name}' не вернул изображение.")
-                    if self.history_manager.can_undo(active_layer.id):
-                        self.history_manager.undo(active_layer.id)
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка фильтра", f"Не удалось применить '{filter_name}': {e}")
+            if processed_image:
+                active_layer.image = processed_image 
+                self.update_composite_image_display() 
+                self.statusBar().showMessage(f"Применен '{filter_name}' к слою '{active_layer.name}'")
+            else:
+                QMessageBox.warning(self, "Ошибка фильтра", f"Фильтр '{filter_name}' не вернул изображение.")
                 if self.history_manager.can_undo(active_layer.id):
                     self.history_manager.undo(active_layer.id)
-        else:
-            QMessageBox.information(self, "Информация", "Нет активного слоя с изображением для применения фильтра.")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка фильтра", f"Не удалось применить '{filter_name}': {e}")
+            if self.history_manager.can_undo(active_layer.id):
+                self.history_manager.undo(active_layer.id)
+        
         self._update_actions_enabled_state()
 
     @Slot()
     def adjust_brightness_on_active_layer(self):
+        """Открывает диалог для настройки яркости активного слоя."""
         active_layer = self.layer_manager.get_active_layer()
         if not (active_layer and active_layer.image):
             QMessageBox.information(self, "Информация", "Сначала выберите слой с изображением.")
@@ -761,6 +824,7 @@ class ImageEditorWindow(QMainWindow):
 
     @Slot()
     def adjust_contrast_on_active_layer(self):
+        """Открывает диалог для настройки контрастности активного слоя."""
         active_layer = self.layer_manager.get_active_layer()
         if not (active_layer and active_layer.image):
             QMessageBox.information(self, "Информация", "Сначала выберите слой с изображением.")
@@ -770,6 +834,7 @@ class ImageEditorWindow(QMainWindow):
 
     @Slot()
     def apply_blur_to_active_layer(self):
+        """Открывает диалог для настройки Гауссова размытия активного слоя."""
         active_layer = self.layer_manager.get_active_layer()
         if not (active_layer and active_layer.image):
             QMessageBox.information(self, "Информация", "Сначала выберите слой с изображением.")
@@ -779,10 +844,11 @@ class ImageEditorWindow(QMainWindow):
 
     @Slot()
     def reset_active_layer_to_original(self):
+        """Сбрасывает активный слой к его исходному состоянию."""
         active_layer = self.layer_manager.get_active_layer()
         if active_layer and active_layer.original_image:
-            self.history_manager.add_state(active_layer.id, active_layer.image.copy())
-            active_layer.image = active_layer.original_image.copy()
+            self.history_manager.add_state(active_layer.id, active_layer.image.copy()) 
+            active_layer.image = active_layer.original_image.copy() 
             
             self.history_manager.clear_history_for_layer(active_layer.id)
             self.history_manager.add_state(active_layer.id, active_layer.image.copy(), is_initial_state=True)
@@ -796,85 +862,86 @@ class ImageEditorWindow(QMainWindow):
         self._update_actions_enabled_state()
 
     def refresh_layer_list(self):
+        """Обновляет список слоев в QListWidget."""
         self.layer_list_widget.blockSignals(True) 
-        self.layer_list_widget.clear()
-        active_layer_id = self.layer_manager.get_active_layer().id if self.layer_manager.get_active_layer() else None
+        self.layer_list_widget.clear() 
+        
+        active_layer_obj = self.layer_manager.get_active_layer()
+        active_layer_id = active_layer_obj.id if active_layer_obj else None
         
         for i, layer in enumerate(reversed(self.layer_manager.layers)): 
-            item_text = f"{layer.name} {'(V)' if layer.visible else '(H)'}"
+            item_text = f"{layer.name} {'(V)' if layer.visible else '(H)'}" 
             list_item = QListWidgetItem(item_text) 
             list_item.setData(Qt.ItemDataRole.UserRole, layer.id) 
             self.layer_list_widget.addItem(list_item) 
-            if layer.id == active_layer_id:
+            if layer.id == active_layer_id: 
                 self.layer_list_widget.setCurrentItem(list_item) 
         
         self.layer_list_widget.blockSignals(False) 
 
     @Slot(QListWidgetItem, QListWidgetItem) 
-    def on_layer_selection_changed_in_listwidget(self, current_item, previous_item):
-        # --- ИЗМЕНЕНИЕ: Сброс рисования при смене слоя ---
-        if self.drawing_canvas: # Если есть активный холст рисования
-            # Можно спросить пользователя, хочет ли он применить/отменить текущий рисунок
-            # Для простоты пока просто сбрасываем
-            if not self.drawing_canvas.image.isNull(): # Если на холсте что-то есть
-                # reply = QMessageBox.question(self, "Смена слоя", "Применить текущий рисунок перед сменой слоя?", QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
-                # if reply == QMessageBox.StandardButton.Apply: self.apply_drawing_to_layer()
-                # elif reply == QMessageBox.StandardButton.Cancel:
-                #     # TODO: Отменить смену слоя (сложнее, требует восстановления previous_item)
-                #     # Пока просто сбрасываем
-                #     pass # Продолжаем со сбросом
-                pass # Пока просто сбрасываем, если есть рисунок
+    def on_layer_selection_changed_in_listwidget(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
+        """
+        Слот, вызываемый при изменении выбора слоя в QListWidget.
+        """
+        if self.is_drawing_active and self.drawing_canvas:
+            if not self.drawing_canvas.image.isNull(): 
+                pass 
             
             self.drawing_canvas.hide()
             self.drawing_canvas.deleteLater()
             self.drawing_canvas = None
         self.is_drawing_active = False
         self._reset_drawing_tool_actions_check_state()
-        # --- КОНЕЦ ИЗМЕНЕНИЯ ---
 
         if current_item:
             layer_id = current_item.data(Qt.ItemDataRole.UserRole)
-            self.layer_manager.set_active_layer_by_id(layer_id) # Это вызовет on_active_layer_changed_for_history_and_ui
+            self.layer_manager.set_active_layer_by_id(layer_id) 
         else: 
-             self.layer_manager.set_active_layer_by_id(None) # Это также вызовет on_active_layer_changed_for_history_and_ui
+             self.layer_manager.set_active_layer_by_id(None) 
 
 
     @Slot(object) 
     def on_active_layer_changed_for_history_and_ui(self, layer_id_obj): 
-        self._update_actions_enabled_state()
+        """
+        Слот, вызываемый при изменении активного слоя в LayerManager.
+        """
+        self._update_actions_enabled_state() 
 
-        current_selected_item = self.layer_list_widget.currentItem()
-        current_selected_id = current_selected_item.data(Qt.ItemDataRole.UserRole) if current_selected_item else None
+        current_list_widget_item = self.layer_list_widget.currentItem()
+        current_list_widget_selected_id = current_list_widget_item.data(Qt.ItemDataRole.UserRole) if current_list_widget_item else None
 
-        # Синхронизация выделения в QListWidget
-        # Блокируем сигналы, чтобы избежать рекурсивного вызова on_layer_selection_changed_in_listwidget
         self.layer_list_widget.blockSignals(True)
-        if layer_id_obj is None:
-            if current_selected_item:
+        if layer_id_obj is None: 
+            if current_list_widget_item: 
                 self.layer_list_widget.setCurrentItem(None) 
-        elif layer_id_obj != current_selected_id:
+        elif layer_id_obj != current_list_widget_selected_id: 
+            found_in_list = False
             for i in range(self.layer_list_widget.count()):
                 item = self.layer_list_widget.item(i)
                 if item.data(Qt.ItemDataRole.UserRole) == layer_id_obj:
                     self.layer_list_widget.setCurrentItem(item) 
+                    found_in_list = True
                     break
-        self.layer_list_widget.blockSignals(False)
+            if not found_in_list and current_list_widget_item : 
+                 self.layer_list_widget.setCurrentItem(None) 
+        self.layer_list_widget.blockSignals(False) 
         
-        active_layer = self.layer_manager.get_active_layer()
-        if active_layer:
-            self.statusBar().showMessage(f"Активный слой: {active_layer.name}")
+        active_layer_from_manager = self.layer_manager.get_active_layer()
+        if active_layer_from_manager:
+            self.statusBar().showMessage(f"Активный слой: {active_layer_from_manager.name}")
         else:
             self.statusBar().showMessage("Нет активного слоя.")
         
-        # Важно: Обновить отображение, так как активный слой мог измениться
-        self.update_composite_image_display()
+        self.update_composite_image_display() 
 
 
     @Slot()
     def add_new_layer_action(self):
+        """Добавляет новый пустой слой в проект."""
         width, height = 640, 480 
         if self.layer_manager.has_layers() and self.layer_manager.layers[0].image:
-            ref_layer_img = self.layer_manager.layers[0].image
+            ref_layer_img = self.layer_manager.layers[0].image 
             width, height = ref_layer_img.size
         elif self.current_pixmap_for_zoom and not self.current_pixmap_for_zoom.isNull(): 
             width = self.current_pixmap_for_zoom.width()
@@ -884,23 +951,18 @@ class ImageEditorWindow(QMainWindow):
         
         new_layer = self.layer_manager.add_layer(image=new_layer_image, is_original=True) 
         
-        self.refresh_layer_list() # Обновит список и выделит новый слой, если он стал активным
-        # add_layer в LayerManager должен сам устанавливать активный слой, если это первый слой
-        # или если не было активного. set_active_layer_by_id вызовется через on_layer_selection_changed
-        # или напрямую, если refresh_layer_list его установит.
+        self.refresh_layer_list() 
 
-        # Если после refresh_layer_list активный слой не тот, что мы добавили (маловероятно, но для надежности)
-        if new_layer and (not self.layer_manager.get_active_layer() or self.layer_manager.get_active_layer().id != new_layer.id):
-             self.layer_manager.set_active_layer_by_id(new_layer.id)
-
-
-        self.update_composite_image_display() 
-        self.statusBar().showMessage(f"Добавлен новый слой: {new_layer.name if new_layer else 'Ошибка'}")
-        # self._update_actions_enabled_state() # Вызывается из on_active_layer_changed_for_history_and_ui
-
-
+        if new_layer:
+             if not self.layer_manager.get_active_layer() or self.layer_manager.get_active_layer().id != new_layer.id:
+                 self.layer_manager.set_active_layer_by_id(new_layer.id)
+             self.statusBar().showMessage(f"Добавлен новый слой: {new_layer.name}")
+        else:
+            self.statusBar().showMessage("Ошибка при добавлении нового слоя.")
+        
     @Slot()
     def trigger_undo(self):
+        """Отменяет последнее действие для активного слоя."""
         active_layer = self.layer_manager.get_active_layer()
         if active_layer and self.history_manager.can_undo(active_layer.id):
             undone_image = self.history_manager.undo(active_layer.id)
@@ -916,6 +978,7 @@ class ImageEditorWindow(QMainWindow):
 
     @Slot()
     def trigger_redo(self):
+        """Повторяет отмененное действие для активного слоя."""
         active_layer = self.layer_manager.get_active_layer()
         if active_layer and self.history_manager.can_redo(active_layer.id):
             redone_image = self.history_manager.redo(active_layer.id)
@@ -930,42 +993,45 @@ class ImageEditorWindow(QMainWindow):
         self._update_actions_enabled_state() 
 
     @Slot()
-    def zoom_image_on_display(self, factor):
-        if self.current_pixmap_for_zoom and not self.current_pixmap_for_zoom.isNull(): 
-            new_zoom_factor = self.current_zoom_factor * factor
-            new_zoom_factor = max(0.05, min(new_zoom_factor, 20.0)) # Ограничение зума
-
-            if abs(new_zoom_factor - self.current_zoom_factor) < 1e-5 and factor != 1.0 : # Если зум на пределе и не меняется
-                 self.statusBar().showMessage(f"Масштаб: {self.current_zoom_factor:.2f}x (достигнут предел)")
-                 return
-
-            self.current_zoom_factor = new_zoom_factor
-            original_composite_pixmap = self.current_pixmap_for_zoom # Это всегда 100% pixmap
-            
-            new_width = int(original_composite_pixmap.width() * self.current_zoom_factor)
-            new_height = int(original_composite_pixmap.height() * self.current_zoom_factor)
-
-            if new_width > 0 and new_height > 0:
-                scaled_pixmap = original_composite_pixmap.scaled(
-                    new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-                )
-                self.image_label.setPixmap(scaled_pixmap)
-                self.image_label.adjustSize() 
-                self.statusBar().showMessage(f"Масштаб: {self.current_zoom_factor:.2f}x")
-            else: 
-                # Если масштаб слишком мал, показываем 100% (или минимально возможный)
-                self.image_label.setPixmap(original_composite_pixmap)
-                self.image_label.adjustSize()
-                self.current_zoom_factor = 1.0 # Сбрасываем зум, если что-то пошло не так
-                self.statusBar().showMessage(f"Масштаб сброшен до 1.00x (ошибка масштабирования)")
-        else:
+    def zoom_image_on_display(self, factor: float):
+        """
+        Изменяет масштаб отображения текущей композиции.
+        """
+        if not (self.current_pixmap_for_zoom and not self.current_pixmap_for_zoom.isNull()):
             self.statusBar().showMessage("Нет изображения для масштабирования.")
+            return
+            
+        new_zoom_factor = self.current_zoom_factor * factor
+        new_zoom_factor = max(0.05, min(new_zoom_factor, 20.0)) 
 
+        if abs(new_zoom_factor - self.current_zoom_factor) < 1e-5 and factor != 1.0 : 
+             self.statusBar().showMessage(f"Масштаб: {self.current_zoom_factor:.2f}x (достигнут предел)")
+             return
 
+        self.current_zoom_factor = new_zoom_factor
+        original_composite_pixmap = self.current_pixmap_for_zoom 
+        
+        new_width = int(original_composite_pixmap.width() * self.current_zoom_factor)
+        new_height = int(original_composite_pixmap.height() * self.current_zoom_factor)
+
+        if new_width > 0 and new_height > 0:
+            scaled_pixmap = original_composite_pixmap.scaled(
+                new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.adjustSize() 
+            self.statusBar().showMessage(f"Масштаб: {self.current_zoom_factor:.2f}x")
+        else: 
+            self.image_label.setPixmap(original_composite_pixmap)
+            self.image_label.adjustSize()
+            self.current_zoom_factor = 1.0 
+            self.statusBar().showMessage(f"Масштаб сброшен до 1.00x (ошибка масштабирования)")
+        
     @Slot()
     def set_actual_image_size(self):
+        """Устанавливает масштаб отображения в 100% (реальный размер)."""
         if self.current_pixmap_for_zoom and not self.current_pixmap_for_zoom.isNull(): 
-            self.image_label.setPixmap(self.current_pixmap_for_zoom) # current_pixmap_for_zoom это всегда 100%
+            self.image_label.setPixmap(self.current_pixmap_for_zoom) 
             self.image_label.adjustSize()
             self.current_zoom_factor = 1.0
             self.statusBar().showMessage("Масштаб: 1.00x (Реальный размер)")
@@ -973,6 +1039,7 @@ class ImageEditorWindow(QMainWindow):
             self.statusBar().showMessage("Нет изображения для отображения в реальном размере.")
 
     def _update_actions_enabled_state(self):
+        """Обновляет состояние (enabled/disabled) всех QAction."""
         has_any_layers = self.layer_manager.has_layers()
         active_layer = self.layer_manager.get_active_layer()
         has_active_layer_with_image = active_layer is not None and active_layer.image is not None
@@ -994,7 +1061,6 @@ class ImageEditorWindow(QMainWindow):
 
         self.reset_layer_action.setEnabled(image_operations_enabled and active_layer is not None and active_layer.original_image is not None)
 
-
         can_undo, can_redo = False, False
         if active_layer: 
             can_undo = self.history_manager.can_undo(active_layer.id)
@@ -1007,8 +1073,6 @@ class ImageEditorWindow(QMainWindow):
         self.zoom_out_action.setEnabled(has_pixmap_to_zoom)
         self.actual_size_action.setEnabled(has_pixmap_to_zoom)
 
-        # Инструменты рисования доступны, если есть активный слой с изображением И режим рисования НЕ активен ИЛИ активен
-        # По сути, если есть на чем рисовать. Флаг is_drawing_active больше контролирует кнопки "Применить"/"Очистить"
         drawing_tools_availability = has_active_layer_with_image
         self.brush_action.setEnabled(drawing_tools_availability)
         self.eraser_action.setEnabled(drawing_tools_availability)
@@ -1018,33 +1082,29 @@ class ImageEditorWindow(QMainWindow):
         self.color_action.setEnabled(drawing_tools_availability) 
         self.brush_size_slider.setEnabled(drawing_tools_availability) 
 
-        # Кнопки "Применить" и "Очистить холст" активны только если режим рисования активен и холст существует
         self.apply_drawing_action.setEnabled(self.is_drawing_active and self.drawing_canvas is not None)
         self.clear_drawing_action.setEnabled(self.is_drawing_active and self.drawing_canvas is not None)
 
-
-    def closeEvent(self, event):
-        # Перед закрытием приложения, проверим, есть ли активный холст рисования с изменениями
+    def closeEvent(self, event: QCloseEvent): # <-- ИЗМЕНЕНИЕ: Используем QCloseEvent напрямую
+        """
+        Обрабатывает событие закрытия главного окна.
+        """
         if self.is_drawing_active and self.drawing_canvas and not self.drawing_canvas.image.isNull():
             reply = QMessageBox.question(self, "Незавершенное рисование",
                                          "На холсте есть непримененный рисунок. Применить его перед выходом?",
                                          QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-                                         QMessageBox.StandardButton.Cancel)
+                                         QMessageBox.StandardButton.Cancel) 
             if reply == QMessageBox.StandardButton.Apply:
                 self.apply_drawing_to_layer() 
-                # apply_drawing_to_layer уже сбросит is_drawing_active и т.д.
             elif reply == QMessageBox.StandardButton.Cancel:
-                event.ignore() # Отменяем закрытие приложения
+                event.ignore() 
                 return
-            # Если Discard, то просто продолжаем закрытие, рисунок будет потерян
-
-        if self.layer_manager.has_layers(): # Проверяем остальные несохраненные изменения (если есть такая логика)
-            # Здесь можно добавить более сложную проверку "isModified" для всего проекта
+        if self.layer_manager.has_layers(): 
             reply = QMessageBox.question(self, 'Подтверждение выхода',
                                      "Вы уверены, что хотите выйти?\n"
                                      "Несохраненные изменения в открытых документах могут быть потеряны.",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
+                                     QMessageBox.StandardButton.No) 
             if reply == QMessageBox.StandardButton.Yes:
                 event.accept() 
             else:
@@ -1052,28 +1112,27 @@ class ImageEditorWindow(QMainWindow):
         else: 
             event.accept()
 
-# Пример запуска, если этот файл будет основным (для тестирования)
 if __name__ == '__main__':
     from PySide6.QtWidgets import QApplication
     import os 
 
     app = QApplication(sys.argv)
 
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, 'frozen', False): 
         application_path = os.path.dirname(sys.executable)
-    else:
+    else: 
         application_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     resources_path_test = os.path.join(application_path, "resources")
     styles_path_test = os.path.join(resources_path_test, "styles", "style.qss")
     
     if os.path.exists(styles_path_test):
-        with open(styles_path_test, "r") as style_file:
+        with open(styles_path_test, "r", encoding="utf-8") as style_file: 
             app.setStyleSheet(style_file.read())
             print(f"Стили для теста загружены из: {styles_path_test}")
     else:
         print(f"Файл стилей для теста не найден: {styles_path_test}")
 
-    window = ImageEditorWindow(resources_path_test)
+    window = ImageEditorWindow(resources_path_test) 
     window.show()
     sys.exit(app.exec())
